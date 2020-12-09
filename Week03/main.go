@@ -18,6 +18,10 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", IndexHandler)
+	mux.HandleFunc("/shutdown", func(w http.ResponseWriter, r *http.Request) {
+		cancel()
+	})
+
 	server := &http.Server{
 		Addr:    "0.0.0.0:8080",
 		Handler: mux,
@@ -34,7 +38,7 @@ func main() {
 		select {
 		case <-tick.C:
 			cancel()
-			server.Shutdown(ctx1)
+			_ = server.Shutdown(ctx1)
 			return errors.New("timeout")
 		case <-ctx1.Done():
 			return nil
@@ -56,6 +60,7 @@ func main() {
 		select {
 		case <-ctx1.Done():
 			fmt.Println("http server shutdown")
+			_ = server.Shutdown(ctx1)
 			return nil
 		case s := <-stopSignal:
 			fmt.Println("catch stop signal" + s.String())
@@ -66,7 +71,12 @@ func main() {
 	})
 
 	err := g.Wait()
-	fmt.Println("shutdown with :" + err.Error())
+	if err != nil {
+		fmt.Println("shutdown with :" + err.Error())
+	} else {
+		fmt.Println("shutdown success")
+	}
+
 	os.Exit(0)
 
 }
