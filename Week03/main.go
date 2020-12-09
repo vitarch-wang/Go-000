@@ -16,19 +16,30 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", IndexHandler)
+	server := &http.Server{
+		Addr:    "0.0.0.0:8080",
+		Handler: mux,
+	}
+
 	g, ctx1 := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		go HTTPServer(cancel)
+		return server.ListenAndServe()
+	})
 
-		go func() {
-			time.Sleep(10 * time.Second)
+	g.Go(func() error {
+		tick := time.NewTicker(10 * time.Second)
+		select {
+		case <-tick.C:
 			cancel()
-			return
-		}()
+			server.Shutdown(ctx1)
+			return errors.New("timeout")
+		case <-ctx1.Done():
+			return nil
+		}
 
-		<-ctx1.Done()
-		return nil
 	})
 
 	g.Go(func() error {
@@ -49,28 +60,17 @@ func main() {
 		case s := <-stopSignal:
 			fmt.Println("catch stop signal" + s.String())
 			cancel()
-			return errors.New("catch stop signal")
+			_ = server.Shutdown(ctx1)
+			return errors.New("stop by signal:" + s.String())
 		}
 	})
 
-	if err := g.Wait(); err == nil {
-		fmt.Println("success shutdown")
-		os.Exit(0)
-	} else {
-		fmt.Println("error shutdown")
-		os.Exit(1)
-	}
+	err := g.Wait()
+	fmt.Println("shutdown with :" + err.Error())
+	os.Exit(0)
 
 }
 
-func HTTPServer(cancel context.CancelFunc) error {
-	http.HandleFunc("/", IndexHandler)
-	if err := http.ListenAndServe(":8080", nil); err != nil {
-		cancel()
-		return err
-	}
-	return nil
-}
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "hello world")
 	fmt.Println("get request")
